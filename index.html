@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>遠古傳說 ─ 文字 RPG</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #00ff41;
+    --green-dim: #00aa2c;
+    --green-dark: #003d0f;
+    --amber: #ffb000;
+    --red: #ff3c3c;
+    --blue: #4fc3f7;
+    --bg: #0a0a0a;
+    --panel: #0d0d0d;
+    --border: #1a3a1a;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px;
+    overflow-x: hidden;
+  }
+
+  /* CRT scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* CRT flicker */
+  @keyframes flicker {
+    0%,100% { opacity: 1; }
+    92% { opacity: 1; }
+    93% { opacity: 0.97; }
+    94% { opacity: 1; }
+    96% { opacity: 0.98; }
+  }
+  body { animation: flicker 8s infinite; }
+
+  .container {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* TITLE */
+  .title-bar {
+    text-align: center;
+    border: 1px solid var(--green-dim);
+    padding: 6px;
+    background: var(--panel);
+  }
+  .title-bar h1 {
+    font-size: 16px;
+    letter-spacing: 6px;
+    color: var(--green);
+    text-shadow: 0 0 10px var(--green);
+  }
+  .title-bar .sub {
+    font-size: 10px;
+    color: var(--green-dim);
+    letter-spacing: 2px;
+  }
+
+  /* STATUS BAR */
+  .status-bar {
+    border: 1px solid var(--green-dim);
+    background: var(--panel);
+    padding: 6px 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 16px;
+    font-size: 12px;
+  }
+  .status-bar .label { color: var(--green-dim); }
+  .status-bar .val-hp { color: var(--green); }
+  .status-bar .val-hp.low { color: var(--red); }
+  .status-bar .val-exp { color: var(--amber); }
+  .status-bar .val-gold { color: #ffd700; }
+  .status-bar .val-lv { color: var(--blue); }
+  .status-bar .status-row {
+    grid-column: 1 / -1;
+    color: var(--green-dim);
+    font-size: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 3px;
+    margin-top: 2px;
+  }
+
+  /* HP BAR */
+  .hp-bar-wrap {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hp-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--green-dark);
+    border: 1px solid var(--green-dim);
+    position: relative;
+    overflow: hidden;
+  }
+  .hp-bar-fill {
+    height: 100%;
+    background: var(--green);
+    transition: width 0.4s ease;
+  }
+  .hp-bar-fill.low { background: var(--red); }
+
+  /* SCENE TABS */
+  .scene-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .scene-btn {
+    background: var(--panel);
+    border: 1px solid var(--green-dim);
+    color: var(--green-dim);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 2px;
+  }
+  .scene-btn.active {
+    background: var(--green-dark);
+    border-color: var(--green);
+    color: var(--green);
+    text-shadow: 0 0 8px var(--green);
+  }
+  .scene-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* LOG WINDOW */
+  .log-window {
+    border: 1px solid var(--green-dim);
+    background: var(--panel);
+    height: 340px;
+    overflow-y: auto;
+    padding: 8px 10px;
+    scroll-behavior: smooth;
+  }
+  .log-window::-webkit-scrollbar { width: 4px; }
+  .log-window::-webkit-scrollbar-track { background: var(--bg); }
+  .log-window::-webkit-scrollbar-thumb { background: var(--green-dim); }
+
+  .log-line {
+    padding: 1px 0;
+    opacity: 0;
+    animation: fadeIn 0.1s forwards;
+  }
+  @keyframes fadeIn { to { opacity: 1; } }
+
+  .log-line.scene   { color: var(--green); }
+  .log-line.player  { color: var(--green); }
+  .log-line.enemy   { color: var(--red); }
+  .log-line.reward  { color: var(--amber); }
+  .log-line.system  { color: var(--green-dim); }
+  .log-line.city    { color: var(--blue); }
+  .log-line.level   { color: #ff9dff; text-shadow: 0 0 6px #ff9dff; }
+  .log-line.dead    { color: var(--red); text-shadow: 0 0 6px var(--red); }
+  .log-line.divider { color: var(--border); letter-spacing: 1px; }
+
+  /* INVENTORY */
+  .inventory {
+    border: 1px solid var(--green-dim);
+    background: var(--panel);
+    padding: 6px 10px;
+    font-size: 11px;
+    min-height: 36px;
+  }
+  .inventory .inv-title { color: var(--green-dim); margin-bottom: 2px; }
+  .inventory .inv-items { color: var(--amber); word-break: break-all; }
+
+  /* CITY PANEL */
+  .city-panel {
+    display: none;
+    border: 1px solid var(--blue);
+    background: var(--panel);
+    padding: 8px 10px;
+  }
+  .city-panel.visible { display: block; }
+  .city-panel .city-title { color: var(--blue); margin-bottom: 6px; letter-spacing: 2px; }
+  .city-actions { display: grid; grid-template-columns: 1fr; gap: 4px; }
+  .city-action-btn {
+    background: transparent;
+    border: 1px solid var(--blue);
+    color: var(--blue);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 7px 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    letter-spacing: 1px;
+  }
+  .city-action-btn:hover { background: #0a1a2a; }
+  .city-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .cursor {
+    display: inline-block;
+    width: 8px;
+    background: var(--green);
+    animation: blink 1s step-end infinite;
+    margin-left: 2px;
+    vertical-align: middle;
+    height: 12px;
+  }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+  .footer { color: var(--green-dark); font-size: 10px; text-align: center; margin-top: 4px; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- TITLE -->
+  <div class="title-bar">
+    <div class="sub">── 文字冒險 RPG ──</div>
+    <h1>遠 古 傳 說</h1>
+    <div class="sub">ANCIENT LEGEND  v0.1 PROTOTYPE</div>
+  </div>
+
+  <!-- STATUS -->
+  <div class="status-bar" id="statusBar">
+    <div><span class="label">冒險者：</span><span id="sName" class="val-lv">─</span></div>
+    <div><span class="label">等級：</span><span id="sLv" class="val-lv">─</span></div>
+    <div><span class="label">HP：</span><span id="sHp" class="val-hp">─</span></div>
+    <div><span class="label">場景：</span><span id="sScene" class="val-exp">─</span></div>
+    <div class="hp-bar-wrap">
+      <div class="hp-bar"><div class="hp-bar-fill" id="hpFill"></div></div>
+    </div>
+    <div><span class="label">EXP：</span><span id="sExp" class="val-exp">─</span></div>
+    <div><span class="label">Gold：</span><span id="sGold" class="val-gold">─</span></div>
+    <div class="status-row" id="sStatus">正在初始化...</div>
+  </div>
+
+  <!-- SCENE TABS -->
+  <div class="scene-tabs">
+    <button class="scene-btn active" id="btnField" onclick="goScene('field')">⚔ 郊　外</button>
+    <button class="scene-btn" id="btnCity" onclick="goScene('city')">🏙 城　市</button>
+  </div>
+
+  <!-- LOG -->
+  <div class="log-window" id="logWindow">
+    <div class="log-line system">系統初始化中...<span class="cursor"></span></div>
+  </div>
+
+  <!-- CITY PANEL -->
+  <div class="city-panel" id="cityPanel">
+    <div class="city-title">═ 城　市　設　施 ═</div>
+    <div class="city-actions">
+      <button class="city-action-btn" onclick="doRest()">
+        🏨 住宿　(消耗 20 Gold，恢復全部 HP)
+      </button>
+    </div>
+  </div>
+
+  <!-- INVENTORY -->
+  <div class="inventory">
+    <div class="inv-title">── 背包 ──</div>
+    <div class="inv-items" id="invItems">（空）</div>
+  </div>
+
+  <div class="footer">[ AUTO BATTLE ON ] ─ 所有戰鬥自動進行</div>
+</div>
+
+<script>
+// ─── GAME DATA ───────────────────────────────────────────────────────────────
+
+const MONSTERS = {
+  field: [
+    {
+      name: '哥布林', hp: 28, maxHp: 28, atk: [3,7], exp: 12, gold: [3,8],
+      drops: [{ name: '哥布林的耳朵', rate: 0.5 }],
+      skills: [
+        { name: '劈砍', dmg: 1.0, rate: 0.7 },
+        { name: '猛擊', dmg: 1.5, rate: 0.25 },
+        { name: '逃跑嘗試', dmg: 0, rate: 0.05, msg: '哥布林 試圖逃跑，但失敗了！' }
+      ]
+    },
+    {
+      name: '野狼', hp: 22, maxHp: 22, atk: [4,9], exp: 15, gold: [2,6],
+      drops: [{ name: '狼牙', rate: 0.4 }, { name: '狼皮', rate: 0.3 }],
+      skills: [
+        { name: '爪擊', dmg: 1.0, rate: 0.6 },
+        { name: '撕咬', dmg: 1.4, rate: 0.3 },
+        { name: '嚎叫', dmg: 0, rate: 0.1, msg: '野狼 發出低沉的嚎叫！令人不安...' }
+      ]
+    },
+    {
+      name: '巨型蜘蛛', hp: 35, maxHp: 35, atk: [2,6], exp: 18, gold: [4,10],
+      drops: [{ name: '蜘蛛毒液', rate: 0.35 }, { name: '蛛絲', rate: 0.6 }],
+      skills: [
+        { name: '毒牙咬擊', dmg: 1.0, rate: 0.5 },
+        { name: '蛛網纏繞', dmg: 0.5, rate: 0.3, msg: '蜘蛛 噴出蛛網！你的行動暫時受阻。' },
+        { name: '猛撲', dmg: 1.8, rate: 0.2 }
+      ]
+    },
+    {
+      name: '骷髏兵', hp: 40, maxHp: 40, atk: [5,10], exp: 25, gold: [6,14],
+      drops: [{ name: '骷髏骨', rate: 0.7 }, { name: '古舊之劍碎片', rate: 0.15 }],
+      skills: [
+        { name: '骨劍斬', dmg: 1.0, rate: 0.55 },
+        { name: '盾擊', dmg: 0.8, rate: 0.3 },
+        { name: '亡靈咆哮', dmg: 0, rate: 0.15, msg: '骷髏兵 發出詭異的嚎叫！' }
+      ]
+    }
+  ]
+};
+
+const PLAYER_SKILLS = [
+  { name: '揮砍', dmg: 1.0, rate: 0.55 },
+  { name: '猛擊', dmg: 1.6, rate: 0.25 },
+  { name: '防禦架勢', dmg: 0.3, rate: 0.15, msg: '你擺出防禦架勢，穩住陣腳！' },
+  { name: '精準一刺', dmg: 2.2, rate: 0.05, msg: '你找到破綻，精準刺出！' }
+];
+
+const EXP_TABLE = [0, 30, 70, 130, 210, 320, 460, 640, 870, 1160, 9999];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+
+let player = {
+  name: '勇者',
+  hp: 80, maxHp: 80,
+  atk: [8, 15],
+  lv: 1, exp: 0, gold: 30,
+  inventory: [],
+  alive: true
+};
+
+let scene = 'field';
+let battleLock = false;
+let logQueue = [];
+let logTimer = null;
+let fieldTimer = null;
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+
+const rnd = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const chance = p => Math.random() < p;
+const clamp = (v, mn, mx) => Math.max(mn, Math.min(mx, v));
+
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+// ─── LOG SYSTEM ──────────────────────────────────────────────────────────────
+
+function log(text, cls = 'system', delay = 0) {
+  logQueue.push({ text, cls, delay });
+  if (!logTimer) flushLog();
+}
+
+function flushLog() {
+  if (logQueue.length === 0) { logTimer = null; return; }
+  const { text, cls, delay } = logQueue.shift();
+  const el = document.createElement('div');
+  el.className = `log-line ${cls}`;
+  el.textContent = text;
+  const win = document.getElementById('logWindow');
+  win.appendChild(el);
+  win.scrollTop = win.scrollHeight;
+  logTimer = setTimeout(flushLog, delay || 60);
+}
+
+function logDivider() { log('─'.repeat(38), 'divider', 40); }
+
+// ─── UI UPDATE ───────────────────────────────────────────────────────────────
+
+function updateUI() {
+  document.getElementById('sName').textContent = player.name;
+  document.getElementById('sLv').textContent = `Lv.${player.lv}`;
+  const hpEl = document.getElementById('sHp');
+  hpEl.textContent = `${player.hp} / ${player.maxHp}`;
+  hpEl.className = 'val-hp' + (player.hp < player.maxHp * 0.3 ? ' low' : '');
+  document.getElementById('sExp').textContent =
+    `${player.exp} / ${EXP_TABLE[player.lv]} (次級)`;
+  document.getElementById('sGold').textContent = `${player.gold} G`;
+  document.getElementById('sScene').textContent = scene === 'field' ? '郊外' : '城市';
+
+  const fill = document.getElementById('hpFill');
+  const pct = (player.hp / player.maxHp) * 100;
+  fill.style.width = pct + '%';
+  fill.className = 'hp-bar-fill' + (pct < 30 ? ' low' : '');
+
+  const inv = player.inventory;
+  document.getElementById('invItems').textContent =
+    inv.length ? inv.map(i => `[${i.name}×${i.count}]`).join(' ') : '（空）';
+}
+
+// ─── LEVEL UP ────────────────────────────────────────────────────────────────
+
+function checkLevelUp() {
+  while (player.exp >= EXP_TABLE[player.lv] && player.lv < 10) {
+    player.exp -= EXP_TABLE[player.lv];
+    player.lv++;
+    const hpGain = rnd(8, 14);
+    const atkGain = rnd(2, 4);
+    player.maxHp += hpGain;
+    player.hp = player.maxHp;
+    player.atk = [player.atk[0] + atkGain, player.atk[1] + atkGain + 1];
+    log(``, 'system', 80);
+    log(`★ ─── LEVEL UP！ Lv.${player.lv - 1} → Lv.${player.lv} ─── ★`, 'level', 80);
+    log(`  最大HP +${hpGain}  攻擊力 +${atkGain}  HP全回復`, 'level', 80);
+    log(``, 'system', 80);
+  }
+}
+
+// ─── INVENTORY ───────────────────────────────────────────────────────────────
+
+function addItem(name) {
+  const found = player.inventory.find(i => i.name === name);
+  if (found) found.count++;
+  else player.inventory.push({ name, count: 1 });
+}
+
+// ─── BATTLE ENGINE ───────────────────────────────────────────────────────────
+
+function spawnMonster() {
+  const pool = MONSTERS.field;
+  const template = pool[Math.floor(Math.random() * pool.length)];
+  return deepClone(template);
+}
+
+function pickSkill(skills) {
+  const r = Math.random();
+  let acc = 0;
+  for (const sk of skills) {
+    acc += sk.rate;
+    if (r < acc) return sk;
+  }
+  return skills[0];
+}
+
+async function doBattle() {
+  if (battleLock || !player.alive || scene !== 'field') return;
+  battleLock = true;
+
+  const enemy = spawnMonster();
+  logDivider();
+  log(`${player.name} 在荒野中繼續前行...`, 'scene', 300);
+  log(``, 'system', 200);
+  log(`！ 出現了怪物 ── 【${enemy.name}】！`, 'enemy', 200);
+  log(`${enemy.name} 的 HP：${enemy.hp}`, 'enemy', 120);
+  log(``, 'system', 120);
+
+  let turn = 0;
+  while (enemy.hp > 0 && player.alive) {
+    turn++;
+    await sleep(420);
+    if (scene !== 'field') { battleLock = false; return; }
+
+    // Player attacks
+    const pSkill = pickSkill(PLAYER_SKILLS);
+    if (pSkill.dmg > 0) {
+      const base = rnd(player.atk[0], player.atk[1]);
+      const dmg = Math.max(1, Math.round(base * pSkill.dmg));
+      enemy.hp = Math.max(0, enemy.hp - dmg);
+      const critical = pSkill.dmg >= 2.0 ? '【致命一擊】' : '';
+      log(`${player.name} 對 ${enemy.name} 使出「${pSkill.name}」${critical}，造成 ${dmg} 點傷害`, 'player', 80);
+    } else {
+      log(pSkill.msg || `${player.name} 施展了「${pSkill.name}」`, 'player', 80);
+    }
+
+    if (enemy.hp <= 0) break;
+
+    await sleep(280);
+    // Enemy attacks
+    const eSkill = pickSkill(enemy.skills);
+    if (eSkill.dmg > 0) {
+      const base = rnd(enemy.atk[0], enemy.atk[1]);
+      const dmg = Math.max(1, Math.round(base * eSkill.dmg));
+      player.hp = Math.max(0, player.hp - dmg);
+      log(`${enemy.name} 對 ${player.name} 使出「${eSkill.name}」，造成 ${dmg} 點傷害`, 'enemy', 80);
+    } else {
+      log(eSkill.msg || `${enemy.name} 施展了「${eSkill.name}」`, 'enemy', 80);
+    }
+
+    updateUI();
+
+    if (player.hp <= 0) {
+      player.alive = false;
+      player.hp = 0;
+      break;
+    }
+  }
+
+  await sleep(300);
+
+  if (!player.alive) {
+    log(``, 'system', 80);
+    log(`†  ${player.name} 倒下了...  †`, 'dead', 80);
+    log(`   GAME OVER   `, 'dead', 80);
+    log(``, 'system', 80);
+    log(`（重新整理頁面可重新開始）`, 'system', 80);
+    document.getElementById('btnField').disabled = true;
+    document.getElementById('btnCity').disabled = true;
+    updateUI();
+    battleLock = false;
+    return;
+  }
+
+  // Victory
+  log(``, 'system', 80);
+  log(`${enemy.name} 敗北！`, 'scene', 80);
+
+  const expGain = enemy.exp + rnd(0, 3);
+  const goldGain = rnd(enemy.gold[0], enemy.gold[1]);
+  player.exp += expGain;
+  player.gold += goldGain;
+
+  let rewardLine = `EXP +${expGain}　Gold +${goldGain}`;
+  const drops = [];
+  for (const d of enemy.drops) {
+    if (chance(d.rate)) {
+      drops.push(d.name);
+      addItem(d.name);
+    }
+  }
+  if (drops.length) rewardLine += `　獲得：${drops.join('、')}`;
+  log(rewardLine, 'reward', 80);
+
+  checkLevelUp();
+  updateUI();
+
+  battleLock = false;
+  // Schedule next encounter
+  if (scene === 'field' && player.alive) {
+    const wait = rnd(2200, 4200);
+    fieldTimer = setTimeout(doBattle, wait);
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── SCENES ──────────────────────────────────────────────────────────────────
+
+function goScene(s) {
+  if (s === scene) return;
+  if (!player.alive) return;
+
+  clearTimeout(fieldTimer);
+  fieldTimer = null;
+
+  scene = s;
+  document.getElementById('btnField').classList.toggle('active', s === 'field');
+  document.getElementById('btnCity').classList.toggle('active', s === 'city');
+  document.getElementById('cityPanel').classList.toggle('visible', s === 'city');
+
+  updateUI();
+  logDivider();
+
+  if (s === 'field') {
+    log(`${player.name} 離開城市，踏入廣闊的郊外。`, 'scene', 200);
+    log(`四周靜悄悄的，但危機似乎潛伏在黑暗中...`, 'scene', 200);
+    fieldTimer = setTimeout(doBattle, 1800);
+  } else {
+    log(`${player.name} 回到了城市。`, 'city', 200);
+    log(`石板路上傳來商販的叫賣聲，人群喧囂。`, 'city', 200);
+    log(`可以在此休息或補給。`, 'city', 200);
+  }
+}
+
+// ─── CITY ACTIONS ────────────────────────────────────────────────────────────
+
+function doRest() {
+  const cost = 20;
+  if (player.gold < cost) {
+    log(`老闆說：「Gold 不夠，沒辦法讓你入住！」`, 'city', 80);
+    return;
+  }
+  if (player.hp >= player.maxHp) {
+    log(`你已精力充沛，不需要休息。`, 'city', 80);
+    return;
+  }
+  player.gold -= cost;
+  const healed = player.maxHp - player.hp;
+  player.hp = player.maxHp;
+  log(`你在旅館裡美美地睡了一覺。`, 'city', 120);
+  log(`HP 全回復！(+${healed})　Gold -${cost}`, 'reward', 80);
+  updateUI();
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+
+function init() {
+  // Ask for name
+  const win = document.getElementById('logWindow');
+  win.innerHTML = '';
+
+  log(`══════════════════════════════════════`, 'divider', 60);
+  log(`    遠 古 傳 說  ─  ANCIENT LEGEND`, 'level', 80);
+  log(`══════════════════════════════════════`, 'divider', 60);
+  log(``, 'system', 100);
+  log(`一個古老的世界，被黑暗的力量籠罩...`, 'scene', 140);
+  log(`傳說中，有一名勇者將會降臨，`, 'scene', 140);
+  log(`終結這一切的混沌。`, 'scene', 140);
+  log(``, 'system', 200);
+
+  setTimeout(() => {
+    const name = prompt('請輸入你的名字：', '勇者') || '勇者';
+    player.name = name.slice(0, 8) || '勇者';
+    log(`── ${player.name} 的冒險，正式展開 ──`, 'level', 100);
+    log(``, 'system', 100);
+    log(`你踏出城門，望向廣闊的郊外...`, 'scene', 200);
+    log(``, 'system', 100);
+    updateUI();
+    document.getElementById('cityPanel').classList.remove('visible');
+    fieldTimer = setTimeout(doBattle, 2200);
+  }, 1400);
+}
+
+init();
+</script>
+</body>
+</html>
